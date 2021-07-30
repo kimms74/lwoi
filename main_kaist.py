@@ -9,7 +9,7 @@ from liegroups.torch import SE3, SO3
 import pickle
 from dataset import NCLTDataset, KAISTDataset
 from filter import KAISTFilter, NCLTFilter
-from plots import plot_animation, plot_and_save_traj, plot_and_save_cate
+# from plots import plot_animation, plot_and_save_traj, plot_and_save_cate
 from scipy.signal import savgol_filter
 from train import train_gp, GpOdoFog, GpImu, FNET, HNET
 
@@ -42,123 +42,124 @@ def read_data_nclt(args):
 	k = int(args.Delta_t/args.delta_t)
 	bar_dataset = progressbar.ProgressBar(max_value=len(datasets))
 	for idx_i, dataset_i in enumerate(datasets):
-		print("\nDataset name: " + dataset_i)
-		path_odo, path_fog, path_imu, path_gt = set_path_nclt(args, dataset_i)
+		if os.path.isfile(args.path_data_save + dataset_i +".p") != True:
+			print("\nDataset name: " + dataset_i)
+			path_odo, path_fog, path_imu, path_gt = set_path_nclt(args, dataset_i)
 
-		imu = np.genfromtxt(path_imu, delimiter=",", skip_header=1)
-		odo = np.genfromtxt(path_odo, delimiter=",", skip_header=1)
-		fog = np.genfromtxt(path_fog, delimiter=",", skip_header=1)
-		gt = np.genfromtxt(path_gt, delimiter=",", skip_header=1)
+			imu = np.genfromtxt(path_imu, delimiter=",", skip_header=1)
+			odo = np.genfromtxt(path_odo, delimiter=",", skip_header=1)
+			fog = np.genfromtxt(path_fog, delimiter=",", skip_header=1)
+			gt = np.genfromtxt(path_gt, delimiter=",", skip_header=1)
 
-		# time synchronization
-		t0 = np.max([fog[0, 0], gt[0, 0], odo[0, 0], imu[0, 0]])
-		t_end = np.min([fog[-1, 0], gt[-1, 0], odo[-1, 0], imu[-1, 0]])
+			# time synchronization
+			t0 = np.max([fog[0, 0], gt[0, 0], odo[0, 0], imu[0, 0]])
+			t_end = np.min([fog[-1, 0], gt[-1, 0], odo[-1, 0], imu[-1, 0]])
 
-		# interpolate all data, with particular attention to angles
-		t_end = int((t_end-t0)/time_factor)
-		t = np.linspace(0, t_end, num=int(t_end/args.delta_t))
+			# interpolate all data, with particular attention to angles
+			t_end = int((t_end-t0)/time_factor)
+			t = np.linspace(0, t_end, num=int(t_end/args.delta_t))
 
-		gt_new = np.zeros((t.shape[0], gt.shape[1]))
-		fog_new = np.zeros((t.shape[0], 4))
-		fog_unwrap = np.unwrap(fog[:, 1])
-		gt_t = (gt[:, 0]-t0)/time_factor
-		fog_t = (fog[:, 0]-t0)/time_factor
-		i_gt = 0
-		i_fog = 0
-		i_fog_prev = i_fog
-		for j in range(t.shape[0]):
-			while gt_t[i_gt] < t[j]:
-				i_gt += 1
-			while fog_t[i_fog] < t[j]:
-				i_fog += 1
+			gt_new = np.zeros((t.shape[0], gt.shape[1]))
+			fog_new = np.zeros((t.shape[0], 4))
+			fog_unwrap = np.unwrap(fog[:, 1])
+			gt_t = (gt[:, 0]-t0)/time_factor
+			fog_t = (fog[:, 0]-t0)/time_factor
+			i_gt = 0
+			i_fog = 0
+			i_fog_prev = i_fog
+			for j in range(t.shape[0]):
+				while gt_t[i_gt] < t[j]:
+					i_gt += 1
+				while fog_t[i_fog] < t[j]:
+					i_fog += 1
 
-			if 	np.abs(gt_t[i_gt]-t[j]) <  np.abs(gt_t[i_gt-1]-t[j]):
-				gt_new[j, :] = gt[i_gt, :]
-			else:
-				gt_new[j, :] = gt[i_gt-1, :]
+				if 	np.abs(gt_t[i_gt]-t[j]) <  np.abs(gt_t[i_gt-1]-t[j]):
+					gt_new[j, :] = gt[i_gt, :]
+				else:
+					gt_new[j, :] = gt[i_gt-1, :]
 
-			if 	np.abs(fog_t[i_fog]-t[j]) <  np.abs(fog_t[i_fog+1]-t[j]):
-				fog_new[j, 3] = fog_unwrap[i_fog]-fog_unwrap[i_fog_prev]
-				i_fog_prev = i_fog
-			else:
-				fog_new[j, 3] = fog_unwrap[i_fog+1]-fog_unwrap[i_fog_prev]
-				i_fog_prev = i_fog+1
+				if 	np.abs(fog_t[i_fog]-t[j]) <  np.abs(fog_t[i_fog+1]-t[j]):
+					fog_new[j, 3] = fog_unwrap[i_fog]-fog_unwrap[i_fog_prev]
+					i_fog_prev = i_fog
+				else:
+					fog_new[j, 3] = fog_unwrap[i_fog+1]-fog_unwrap[i_fog_prev]
+					i_fog_prev = i_fog+1
 
-		gt_new[:, :4] = interp_data(gt[:, :4], t, t0)
-		odo = interp_data(odo, t, t0)
-		imu = interp_data(imu, t, t0)
+			gt_new[:, :4] = interp_data(gt[:, :4], t, t0)
+			odo = interp_data(odo, t, t0)
+			imu = interp_data(imu, t, t0)
 
-		gt = torch.from_numpy(gt_new[:, 1:])
-		imu = torch.from_numpy(imu[:, 1:])
-		odo = torch.from_numpy(odo[:, 1:])
-		fog = torch.from_numpy(-fog_new[:, 1:])
+			gt = torch.from_numpy(gt_new[:, 1:])
+			imu = torch.from_numpy(imu[:, 1:])
+			odo = torch.from_numpy(odo[:, 1:])
+			fog = torch.from_numpy(-fog_new[:, 1:])
 
-		# take IMR gyro and accelerometer
-		imu = imu[:, [6, 7, 8, 3, 4, 5]]
+			# take IMR gyro and accelerometer
+			imu = imu[:, [6, 7, 8, 3, 4, 5]]
 
-		error = (fog-fog.float().double()).norm() + (imu-imu.float().double()).norm() + \
-		        (odo-odo.float().double()).norm() + (gt-gt.float().double()).norm()
-		if error > 0.1:
-			print("conversion double -> float error ! ! !")
+			error = (fog-fog.float().double()).norm() + (imu-imu.float().double()).norm() + \
+					(odo-odo.float().double()).norm() + (gt-gt.float().double()).norm()
+			if error > 0.1:
+				print("conversion double -> float error ! ! !")
 
-		fog = fog.float()
-		imu = imu.float()
-		odo = odo.float()
-		gt = gt.float()
-		# offset position to 0
-		gt[:, :3] = gt[:, :3]-gt[0, :3]
+			fog = fog.float()
+			imu = imu.float()
+			odo = odo.float()
+			gt = gt.float()
+			# offset position to 0
+			gt[:, :3] = gt[:, :3]-gt[0, :3]
 
-		v_gt = torch.zeros(gt.shape[0], 3)
-		for j in range(3):
-			p_gt_smooth = torch.from_numpy(savgol_filter(gt[:, j], 5, 2))
-			v_gt[1:, j] = (p_gt_smooth[1:]-p_gt_smooth[:-1])/args.delta_t
+			v_gt = torch.zeros(gt.shape[0], 3)
+			for j in range(3):
+				p_gt_smooth = torch.from_numpy(savgol_filter(gt[:, j], 5, 2))
+				v_gt[1:, j] = (p_gt_smooth[1:]-p_gt_smooth[:-1])/args.delta_t
 
-		N_max = torch.ceil(torch.Tensor([t.shape[0]/k])).int().item()
-		chi =  torch.eye(4).repeat(N_max, 1, 1)
-		y_odo_fog = torch.eye(4).repeat(N_max, 1, 1)
-		u_odo_fog = torch.zeros(N_max, k, 3)
-		u_imu = torch.zeros(N_max, k, 6)
-		y_imu = torch.zeros(N_max, 9)
+			N_max = torch.ceil(torch.Tensor([t.shape[0]/k])).int().item()
+			chi =  torch.eye(4).repeat(N_max, 1, 1)
+			y_odo_fog = torch.eye(4).repeat(N_max, 1, 1)
+			u_odo_fog = torch.zeros(N_max, k, 3)
+			u_imu = torch.zeros(N_max, k, 6)
+			y_imu = torch.zeros(N_max, 9)
 
-		i_odo = 0
-		i = 0
-		bar_dataset_i = progressbar.ProgressBar(t.shape[0])
-		while i_odo + k < t.shape[0]:
-			u_odo_fog[i] = torch.cat((odo[i_odo:i_odo+k],
-			                          fog[i_odo:i_odo+k, 2].unsqueeze(-1)), 1)
-			u_imu[i] = imu[i_odo:i_odo+k]
-			chi_end = gt2chi(gt[i_odo+k])
-			chi[i] =  gt2chi(gt[i_odo])
-			chi_i = chi[i]
+			i_odo = 0
+			i = 0
+			bar_dataset_i = progressbar.ProgressBar(t.shape[0])
+			while i_odo + k < t.shape[0]:
+				u_odo_fog[i] = torch.cat((odo[i_odo:i_odo+k],
+										fog[i_odo:i_odo+k, 2].unsqueeze(-1)), 1)
+				u_imu[i] = imu[i_odo:i_odo+k]
+				chi_end = gt2chi(gt[i_odo+k])
+				chi[i] =  gt2chi(gt[i_odo])
+				chi_i = chi[i]
 
-			y_odo_fog[i] = SE3.from_matrix(chi_i).inv().dot(SE3.from_matrix(chi_end)).as_matrix()
+				y_odo_fog[i] = SE3.from_matrix(chi_i).inv().dot(SE3.from_matrix(chi_end)).as_matrix()
 
-			v_i = v_gt[i_odo]
-			v_end = v_gt[i_odo+k]
+				v_i = v_gt[i_odo]
+				v_end = v_gt[i_odo+k]
 
-			y_imu[i]  =  torch.cat((
-			 	SO3.from_matrix(chi_i[:3, :3].t().mm(chi_end[:3, :3])).log(),
-				chi_i[:3, :3].t().mv(v_end-v_i-g*args.Delta_t),
-				chi_i[:3, :3].t().mv(chi_end[:3, 3]-chi_i[:3, 3]-v_i*args.Delta_t-1/2*g*args.Delta_t**2)
-			), 0)
+				y_imu[i]  =  torch.cat((
+					SO3.from_matrix(chi_i[:3, :3].t().mm(chi_end[:3, :3])).log(),
+					chi_i[:3, :3].t().mv(v_end-v_i-g*args.Delta_t),
+					chi_i[:3, :3].t().mv(chi_end[:3, 3]-chi_i[:3, 3]-v_i*args.Delta_t-1/2*g*args.Delta_t**2)
+				), 0)
 
-			i_odo += k
-			i += 1
-			if i_odo % 100 == 0:
-				bar_dataset_i.update(i_odo)
+				i_odo += k
+				i += 1
+				if i_odo % 100 == 0:
+					bar_dataset_i.update(i_odo)
 
-		mondict = {'t': t[:i],
-				   'chi': chi[:i],
-				   'u_imu': u_imu[:i],
-				   'u_odo_fog': u_odo_fog[:i],
-				   'y_odo_fog': y_odo_fog[:i],
-				   'y_imu': y_imu[:i],
-				   'name': dataset_i
-				   }
-		bar_dataset.update(idx_i)
-		print("\nNumber of points: {}".format(i))
-		with open(args.path_data_save + dataset_i +".p", "wb") as file_pi:
-			pickle.dump(mondict, file_pi)
+			mondict = {'t': t[:i],
+					'chi': chi[:i],
+					'u_imu': u_imu[:i],
+					'u_odo_fog': u_odo_fog[:i],
+					'y_odo_fog': y_odo_fog[:i],
+					'y_imu': y_imu[:i],
+					'name': dataset_i
+					}
+			bar_dataset.update(idx_i)
+			print("\nNumber of points: {}".format(i))
+			with open(args.path_data_save + dataset_i +".p", "wb") as file_pi:
+				pickle.dump(mondict, file_pi)
 
 def read_data_kaist(args):
 	def set_path_kaist(args, dataset):
@@ -191,153 +192,154 @@ def read_data_kaist(args):
 
 	bar_dataset = progressbar.ProgressBar(max_value=len(datasets))
 	for idx_i, dataset_i in enumerate(datasets):
-		print("\nDataset name: " + dataset_i)
+		if os.path.isfile(args.path_data_save + dataset_i +".p") != True:
+			print("\nDataset name: " + dataset_i)
 
-		path_odo, path_fog, path_imu, path_gt = set_path_kaist(args, dataset_i)
+			path_odo, path_fog, path_imu, path_gt = set_path_kaist(args, dataset_i)
 
-		imu = np.genfromtxt(path_imu, delimiter=",")
-		odo = np.genfromtxt(path_odo, delimiter=",")
-		fog = np.genfromtxt(path_fog, delimiter=",")
-		gt = np.genfromtxt(path_gt, delimiter=",")
+			imu = np.genfromtxt(path_imu, delimiter=",")
+			odo = np.genfromtxt(path_odo, delimiter=",")
+			fog = np.genfromtxt(path_fog, delimiter=",")
+			gt = np.genfromtxt(path_gt, delimiter=",")
 
-		# Urban00-05 and campus00 have only quaternion and Euler data
-		# Must be considered in Dataset class
-		imu_present = imu.shape[1] > 10
-		if not imu_present:
-			imu = np.zeros((odo.shape[0], 17))
-			imu[:, 0] = odo[:, 0]
-			print("No IMU data for dataset " + dataset_i)
+			# Urban00-05 and campus00 have only quaternion and Euler data
+			# Must be considered in Dataset class
+			imu_present = imu.shape[1] > 10
+			if not imu_present:
+				imu = np.zeros((odo.shape[0], 17))
+				imu[:, 0] = odo[:, 0]
+				print("No IMU data for dataset " + dataset_i)
 
-		# time synchronization
-		t0 = np.max([fog[0, 0], gt[0, 0], odo[0, 0], imu[0, 0]])
-		t_end = np.min([fog[-1, 0], gt[-1, 0], odo[-1, 0], imu[-1, 0]])
+			# time synchronization
+			t0 = np.max([fog[0, 0], gt[0, 0], odo[0, 0], imu[0, 0]])
+			t_end = np.min([fog[-1, 0], gt[-1, 0], odo[-1, 0], imu[-1, 0]])
 
-		# interpolate all
-		# Transform differential measurement into integrated measurement
-		t_end = int((t_end-t0)/time_factor)
-		t = np.linspace(0, t_end, num=int(t_end/args.delta_t))
+			# interpolate all
+			# Transform differential measurement into integrated measurement
+			t_end = int((t_end-t0)/time_factor)
+			t = np.linspace(0, t_end, num=int(t_end/args.delta_t))
 
-		gt_new = np.zeros((t.shape[0], gt.shape[1]))
-		fog_new = np.zeros((t.shape[0], 4))
-		gt_t = (gt[:, 0]-t0)/time_factor
-		fog_t = (fog[:, 0]-t0)/time_factor
-		i_gt = 0
-		i_fog = 0
-		i_fog_prev = i_fog
-		for j in range(t.shape[0]):
-			while gt_t[i_gt] < t[j]:
-				i_gt += 1
-			while fog_t[i_fog] < t[j]:
-				i_fog += 1
-
-			if 	np.abs(gt_t[i_gt]-t[j]) <  np.abs(gt_t[i_gt-1]-t[j]):
-				gt_new[j, :] = gt[i_gt, :]
-			else:
-				gt_new[j, :] = gt[i_gt-1, :]
-
-			if 	np.abs(fog_t[i_fog]-t[j]) <  np.abs(fog_t[i_fog+1]-t[j]):
-				fog_new[j, 1:] = np.sum(fog[i_fog_prev:i_fog, 1:], axis=0)
-			else:
-				fog_new[j, 1:] = np.sum(fog[i_fog_prev:i_fog+1, 1:], axis=0)
+			gt_new = np.zeros((t.shape[0], gt.shape[1]))
+			fog_new = np.zeros((t.shape[0], 4))
+			gt_t = (gt[:, 0]-t0)/time_factor
+			fog_t = (fog[:, 0]-t0)/time_factor
+			i_gt = 0
+			i_fog = 0
 			i_fog_prev = i_fog
+			for j in range(t.shape[0]):
+				while gt_t[i_gt] < t[j]:
+					i_gt += 1
+				while fog_t[i_fog] < t[j]:
+					i_fog += 1
 
-		# interpolate position
-		gt_new[:, [0, 4, 8, 12]] = interp_data(gt[:, [0, 4, 8, 12]], t, t0)
+				if 	np.abs(gt_t[i_gt]-t[j]) <  np.abs(gt_t[i_gt-1]-t[j]):
+					gt_new[j, :] = gt[i_gt, :]
+				else:
+					gt_new[j, :] = gt[i_gt-1, :]
 
-		gt_new[:, 0] = t
-		fog_new[:, 0] = t
+				if 	np.abs(fog_t[i_fog]-t[j]) <  np.abs(fog_t[i_fog+1]-t[j]):
+					fog_new[j, 1:] = np.sum(fog[i_fog_prev:i_fog, 1:], axis=0)
+				else:
+					fog_new[j, 1:] = np.sum(fog[i_fog_prev:i_fog+1, 1:], axis=0)
+				i_fog_prev = i_fog
 
-		odo = interp_data(odo, t, t0)
-		imu = interp_data(imu, t, t0)
+			# interpolate position
+			gt_new[:, [0, 4, 8, 12]] = interp_data(gt[:, [0, 4, 8, 12]], t, t0)
 
-		gt = torch.from_numpy(gt_new[:, 1:])
-		imu = torch.from_numpy(imu[:, 1:])
-		odo = torch.from_numpy(odo[:, 1:])
-		fog = torch.from_numpy(fog_new[:, 1:])
+			gt_new[:, 0] = t
+			fog_new[:, 0] = t
 
-		# take IMR gyro and accelerometer
-		imu = imu[:, 7:13]
+			odo = interp_data(odo, t, t0)
+			imu = interp_data(imu, t, t0)
 
-		# Transform integrated measurement into differential measurement
-		odo[1:, :] = odo[1:, :] - odo[:-1, :]
-		odo[0, :] = 0
+			gt = torch.from_numpy(gt_new[:, 1:])
+			imu = torch.from_numpy(imu[:, 1:])
+			odo = torch.from_numpy(odo[:, 1:])
+			fog = torch.from_numpy(fog_new[:, 1:])
 
-		# remove outlier
-		diff_odo = (odo[:, 1]-odo[:, 0]).numpy()
-		idx_outlier = np.where(np.abs(diff_odo) > threshold_odo)
-		print("outliers in odometer: {:.2f}%".format(len(idx_outlier[0])/diff_odo.shape[0]))
-		while len(idx_outlier[0]) > 0:
-			for idx in idx_outlier[0]:
-				diff_odo[idx] = (diff_odo[idx+1]+diff_odo[idx-1])/2
+			# take IMR gyro and accelerometer
+			imu = imu[:, 7:13]
+
+			# Transform integrated measurement into differential measurement
+			odo[1:, :] = odo[1:, :] - odo[:-1, :]
+			odo[0, :] = 0
+
+			# remove outlier
+			diff_odo = (odo[:, 1]-odo[:, 0]).numpy()
 			idx_outlier = np.where(np.abs(diff_odo) > threshold_odo)
+			print("outliers in odometer: {:.2f}%".format(len(idx_outlier[0])/diff_odo.shape[0]))
+			while len(idx_outlier[0]) > 0:
+				for idx in idx_outlier[0]:
+					diff_odo[idx] = (diff_odo[idx+1]+diff_odo[idx-1])/2
+				idx_outlier = np.where(np.abs(diff_odo) > threshold_odo)
 
-		# offset position to 0
-		for j in range(3):
-			gt[:, 3+4*j] = gt[:, 3+4*j]-gt[0, 3+4*j]
+			# offset position to 0
+			for j in range(3):
+				gt[:, 3+4*j] = gt[:, 3+4*j]-gt[0, 3+4*j]
 
-		error = (fog-fog.float().double()).norm() + (imu-imu.float().double()).norm() + \
-		        (odo-odo.float().double()).norm() + (gt-gt.float().double()).norm()
-		if error > 0.1:
-			print("conversion double -> float error ! ! !")
+			error = (fog-fog.float().double()).norm() + (imu-imu.float().double()).norm() + \
+					(odo-odo.float().double()).norm() + (gt-gt.float().double()).norm()
+			if error > 0.1:
+				print("conversion double -> float error ! ! !")
 
-		fog = fog.float()
-		imu = imu.float()
-		odo = odo.float()
-		gt = gt.float()
+			fog = fog.float()
+			imu = imu.float()
+			odo = odo.float()
+			gt = gt.float()
 
-		v_gt = torch.zeros(gt.shape[0], 3)
-		for j in range(3):
-			p_gt_smooth = torch.from_numpy(savgol_filter(gt[:, 3+4*j], 5, 2))
-			v_gt[1:, j] = (p_gt_smooth[1:]-p_gt_smooth[:-1])/args.delta_t
+			v_gt = torch.zeros(gt.shape[0], 3)
+			for j in range(3):
+				p_gt_smooth = torch.from_numpy(savgol_filter(gt[:, 3+4*j], 5, 2))
+				v_gt[1:, j] = (p_gt_smooth[1:]-p_gt_smooth[:-1])/args.delta_t
 
-		# max number of measurements for this dataset
-		N_max = torch.ceil(torch.Tensor([t.shape[0]/k])).int().item()
-		chi =  torch.eye(4).repeat(N_max, 1, 1)
-		y_odo_fog = torch.eye(4).repeat(N_max, 1, 1)
-		u_odo_fog = torch.zeros(N_max, k, 3)
-		u_imu = torch.zeros(N_max, k, 6)
-		y_imu = torch.zeros(N_max, 9)	
+			# max number of measurements for this dataset
+			N_max = torch.ceil(torch.Tensor([t.shape[0]/k])).int().item()
+			chi =  torch.eye(4).repeat(N_max, 1, 1)
+			y_odo_fog = torch.eye(4).repeat(N_max, 1, 1)
+			u_odo_fog = torch.zeros(N_max, k, 3)
+			u_imu = torch.zeros(N_max, k, 6)
+			y_imu = torch.zeros(N_max, 9)	
 
-		i_odo = 0
-		i = 0
-		bar_dataset_i = progressbar.ProgressBar(t.shape[0])
-		while i_odo + k < t.shape[0]:
-			u_odo_fog[i] = torch.cat((odo[i_odo:i_odo+k],
-			                          fog[i_odo:i_odo+k, 2].unsqueeze(-1)), 1)
-			chi_end = gt2chi(gt[i_odo+k])
-			chi[i] = gt2chi(gt[i_odo])
-			chi_i = chi[i]
+			i_odo = 0
+			i = 0
+			bar_dataset_i = progressbar.ProgressBar(t.shape[0])
+			while i_odo + k < t.shape[0]:
+				u_odo_fog[i] = torch.cat((odo[i_odo:i_odo+k],
+										fog[i_odo:i_odo+k, 2].unsqueeze(-1)), 1)
+				chi_end = gt2chi(gt[i_odo+k])
+				chi[i] = gt2chi(gt[i_odo])
+				chi_i = chi[i]
 
-			y_odo_fog[i] = SE3.from_matrix(chi_i).inv().dot(SE3.from_matrix(chi_end)).as_matrix()
+				y_odo_fog[i] = SE3.from_matrix(chi_i).inv().dot(SE3.from_matrix(chi_end)).as_matrix()
 
-			if imu_present:
-				u_imu[i] = imu[i_odo:i_odo + k]
-				v_i = v_gt[i_odo]
-				v_end = v_gt[i_odo+k]
+				if imu_present:
+					u_imu[i] = imu[i_odo:i_odo + k]
+					v_i = v_gt[i_odo]
+					v_end = v_gt[i_odo+k]
 
-				y_imu[i] =  torch.cat((
-				 	SO3.from_matrix(chi_i[:3, :3].t().mm(chi_end[:3, :3])).log(),
-					chi_i[:3, :3].t().mv(v_end-v_i- g*args.Delta_t),
-					chi_i[:3, :3].t().mv(chi_end[:3, 3]-chi_i[:3, 3]-v_i*args.Delta_t-1/2*g*args.Delta_t**2)
-				),0)
+					y_imu[i] =  torch.cat((
+						SO3.from_matrix(chi_i[:3, :3].t().mm(chi_end[:3, :3])).log(),
+						chi_i[:3, :3].t().mv(v_end-v_i- g*args.Delta_t),
+						chi_i[:3, :3].t().mv(chi_end[:3, 3]-chi_i[:3, 3]-v_i*args.Delta_t-1/2*g*args.Delta_t**2)
+					),0)
 
-			i_odo += k
-			i += 1
-			if i_odo % 100 == 0:
-				bar_dataset_i.update(i_odo)
+				i_odo += k
+				i += 1
+				if i_odo % 100 == 0:
+					bar_dataset_i.update(i_odo)
 
-		mondict = {'t': t[:i],
-				   'chi': chi[:i],
-				   'u_imu': u_imu[:i],
-				   'u_odo_fog': u_odo_fog[:i],
-				   'y_odo_fog': y_odo_fog[:i],
-				   'y_imu': y_imu[:i],
-				   'name': dataset_i
-				   }
-		bar_dataset.update(idx_i)
-		print("\nNumber of points: {}\n".format(i))
-		with open(args.path_data_save + dataset_i +".p", "wb") as file_pi:
-			pickle.dump(mondict, file_pi)
+			mondict = {'t': t[:i],
+					'chi': chi[:i],
+					'u_imu': u_imu[:i],
+					'u_odo_fog': u_odo_fog[:i],
+					'y_odo_fog': y_odo_fog[:i],
+					'y_imu': y_imu[:i],
+					'name': dataset_i
+					}
+			bar_dataset.update(idx_i)
+			print("\nNumber of points: {}\n".format(i))
+			with open(args.path_data_save + dataset_i +".p", "wb") as file_pi:
+				pickle.dump(mondict, file_pi)
 
 def set_gp_imu(args, dataset):
 	path_gp_imu = args.path_temp + "gp_imu"
@@ -357,14 +359,17 @@ def set_gp_imu(args, dataset):
 		return pyro.module("HNET", hnet)(x)
 
 	Xu = u[torch.arange(0, u.shape[0], step=int(u.shape[0]/args.num_inducing_point)).long()]
-	lik_h = gp.likelihoods.Gaussian(name='lik_h', variance=torch.ones(9, 1))
+	lik_h = gp.likelihoods.Gaussian(variance=torch.ones(9, 1))
+	# lik_h = gp.likelihoods.Gaussian(name='lik_h', variance=torch.ones(9, 1))
 	lik_h.load_state_dict(lik_dict)
 
-	kernel_h = gp.kernels.Matern52(input_dim=args.kernel_dim, lengthscale=torch.ones(args.kernel_dim)).\
-		warp(iwarping_fn=hnet_fn)
+
+	kernel_h = gp.kernels.Warping(gp.kernels.Matern52(input_dim=args.kernel_dim, lengthscale=torch.ones(args.kernel_dim)), iwarping_fn=hnet_fn)
 	kernel_h.load_state_dict(kernel_dict)
 	gp_h = gp.models.VariationalSparseGP(u, u.new_ones(9, u.shape[0]), kernel_h, Xu, num_data=dataset.num_data,
-										 likelihood=lik_h, mean_function=None, name='GP_h', whiten=True, jitter=1e-4)
+										 likelihood=lik_h, mean_function=None , whiten=True, jitter=1e-4)
+	# gp_h = gp.models.VariationalSparseGP(u, u.new_ones(9, u.shape[0]), kernel_h, Xu, num_data=dataset.num_data,
+	# 									 likelihood=lik_h, mean_function=None, name='GP_h', whiten=True, jitter=1e-4)
 	gp_h.load_state_dict(gp_dict)
 
 	gp_imu = GpImu(args, gp_h, dataset)
@@ -389,14 +394,16 @@ def set_gp_odo_fog(args, dataset):
 		return pyro.module("FNET", fnet)(x)
 
 	Xu = u[torch.arange(0, u.shape[0], step=int(u.shape[0]/args.num_inducing_point)).long()]
-	lik_f = gp.likelihoods.Gaussian(name='lik_f', variance=torch.ones(6, 1))
+	lik_f = gp.likelihoods.Gaussian(variance=torch.ones(6, 1))
+	# lik_f = gp.likelihoods.Gaussian(name='lik_f', variance=torch.ones(6, 1))
 	lik_f.load_state_dict(lik_dict)
 
-	kernel_f = gp.kernels.Matern52(input_dim=args.kernel_dim, lengthscale=torch.ones(args.kernel_dim)).\
-		warp(iwarping_fn=fnet_fn)
+	kernel_f = gp.kernels.Warping(gp.kernels.Matern52(input_dim=args.kernel_dim, lengthscale=torch.ones(args.kernel_dim)), iwarping_fn=fnet_fn)
 	kernel_f.load_state_dict(kernel_dict)
 	gp_f = gp.models.VariationalSparseGP(u, u.new_ones(6, u.shape[0]), kernel_f, Xu, num_data=dataset.num_data,
-										 likelihood=lik_f, mean_function=None, name='GP_f', whiten=True, jitter=1e-4)
+										 likelihood=lik_f, mean_function=None , whiten=True, jitter=1e-4)
+	# gp_f = gp.models.VariationalSparseGP(u, u.new_ones(6, u.shape[0]), kernel_f, Xu, num_data=dataset.num_data,
+	# 									 likelihood=lik_f, mean_function=None, name='GP_f', whiten=True, jitter=1e-4)
 	gp_f.load_state_dict(gp_dict)
 
 	gp_odo_fog = GpOdoFog(args, gp_f, dataset)
@@ -482,7 +489,7 @@ if __name__ == '__main__':
 	parser.add_argument('--nclt', type=bool, default=False)
 
 	# paths
-	parser.add_argument('--path_data_base', type=str, default="/media/mines/DATA/KAIST/data/")
+	parser.add_argument('--path_data_base', type=str, default="media/DATA/KAIST/data/")
 	parser.add_argument('--path_data_save', type=str, default="data/kaist/")
 	parser.add_argument('--path_results', type=str, default="results/kaist/")
 	parser.add_argument('--path_temp', type=str, default="temp/kaist/")

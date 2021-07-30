@@ -9,7 +9,8 @@ import pyro.optim as optim
 from pyro.contrib.gp.util import Parameterized
 import numpy as np
 from liegroups.torch import SE3, SO3
-from utils import jacobian, MultiVariateGaussian
+from utils import jacobian
+# from utils import jacobian, MultiVariateGaussian
 pyro.enable_validation(True)
 
 # batch matrix vector multiplication
@@ -37,7 +38,8 @@ class HNET(FNET):
 class GpOdoFog(Parameterized):
 	name = 'GpOdoFog'
 	def __init__(self, args, gp_f, dataset):
-		super(GpOdoFog, self).__init__(name='GpOdoFog')
+		super(GpOdoFog, self).__init__()
+		# super(GpOdoFog, self).__init__(name='GpOdoFog')
 		self.gp_f = gp_f
 		self.normalize_factors = dataset.normalize_factors
 		self.calibration_parameters = dataset.calibration_parameters
@@ -157,7 +159,8 @@ class GpOdoFog(Parameterized):
 class GpImu(Parameterized):
 	name = 'GpImu'
 	def __init__(self, args, gp_h, dataset):
-		super(GpImu, self).__init__(name='GpImu')
+		super(GpImu, self).__init__()
+		# super(GpImu, self).__init__(name='GpImu')
 		self.gp_h = gp_h
 		self.normalize_factors = dataset.normalize_factors
 		self.delta_t = args.delta_t
@@ -408,26 +411,38 @@ def train_gp(args, dataset, gp_class):
 		def fnet_fn(x):
 			return pyro.module("FNET", fnet)(x)
 
-		lik = gp.likelihoods.Gaussian(name='lik_f', variance=0.1*torch.ones(6, 1))
+		lik = gp.likelihoods.Gaussian(variance=0.1*torch.ones(6, 1))
+		# lik = gp.likelihoods.Gaussian(name='lik_f', variance=0.1*torch.ones(6, 1))
 		# lik = MultiVariateGaussian(name='lik_f', dim=6) # if lower_triangular_constraint is implemented
-		kernel = gp.kernels.Matern52(input_dim=args.kernel_dim,
-		                               lengthscale=torch.ones(args.kernel_dim)).warp(iwarping_fn=fnet_fn)
+		# kernel = gp.kernels.Matern52(input_dim=args.kernel_dim,
+		#                                lengthscale=torch.ones(args.kernel_dim))	
+		kernel = gp.kernels.Warping(gp.kernels.Matern52(input_dim=args.kernel_dim,
+		                               lengthscale=torch.ones(args.kernel_dim)), iwarping_fn=fnet_fn)	
 		Xu = u[torch.arange(0, u.shape[0], step=int(u.shape[0]/args.num_inducing_point)).long()]
 		gp_model = gp.models.VariationalSparseGP(u, torch.zeros(6, u.shape[0]), kernel, Xu,
 		                                     num_data=dataset.num_data, likelihood=lik, mean_function=None,
-		                                     name=gp_class.name, whiten=True, jitter=1e-3)
+		                                      whiten=True, jitter=1e-3)
+		# gp_model = gp.models.VariationalSparseGP(u, torch.zeros(6, u.shape[0]), kernel, Xu,
+		#                                      num_data=dataset.num_data, likelihood=lik, mean_function=None,
+		#                                      name=gp_class.name, whiten=True, jitter=1e-3)
 	else:
 		hnet = HNET(args, u.shape[2], args.kernel_dim)
 		def hnet_fn(x):
 			return pyro.module("HNET", hnet)(x)
-		lik = gp.likelihoods.Gaussian(name='lik_h', variance=0.1*torch.ones(9, 1))
+		lik = gp.likelihoods.Gaussian(variance=0.1*torch.ones(9, 1))
+		# lik = gp.likelihoods.Gaussian(name='lik_h', variance=0.1*torch.ones(9, 1))
 		# lik = MultiVariateGaussian(name='lik_h', dim=9) # if lower_triangular_constraint is implemented
-		kernel = gp.kernels.Matern52(input_dim=args.kernel_dim,
-		                               lengthscale=torch.ones(args.kernel_dim)).warp(iwarping_fn=hnet_fn)
+		# kernel = gp.kernels.Matern52(input_dim=args.kernel_dim,
+		#                                lengthscale=torch.ones(args.kernel_dim))
+		kernel = gp.kernels.Warping(gp.kernels.Matern52(input_dim=args.kernel_dim,
+		                               lengthscale=torch.ones(args.kernel_dim)),iwarping_fn=hnet_fn)
 		Xu = u[torch.arange(0, u.shape[0], step=int(u.shape[0]/args.num_inducing_point)).long()]
 		gp_model = gp.models.VariationalSparseGP(u, torch.zeros(9, u.shape[0]), kernel, Xu,
 		                                     num_data=dataset.num_data, likelihood=lik, mean_function=None,
-		                                     name=gp_class.name, whiten=True, jitter=1e-4)
+		                                      whiten=True, jitter=1e-4)
+		# gp_model = gp.models.VariationalSparseGP(u, torch.zeros(9, u.shape[0]), kernel, Xu,
+		#                                      num_data=dataset.num_data, likelihood=lik, mean_function=None,
+		#                                      name=gp_class.name, whiten=True, jitter=1e-4)
 
 	gp_instante = gp_class(args, gp_model, dataset)
 	args.mate = preprocessing(args, dataset, gp_instante)
