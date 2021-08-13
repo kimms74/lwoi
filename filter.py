@@ -224,14 +224,14 @@ class NCLTFilter():
 		S = H.mm(self.P).mm(H.t()) + R
 		K_prefix = self.P.mm(H.t())
 		Id = torch.eye(self.P.shape[-1])
-		ImKH = Id - K_prefix.mm(torch.gesv(H, S)[0])
+		ImKH = Id - K_prefix.mm(torch.linalg.solve(H, S)[0])
 		# *Joseph form* of covariance update for numerical stability.
 		self.P = ImKH.mm(self.P).mm(ImKH.transpose(-1, -2)) \
-			+ K_prefix.mm(torch.gesv((K_prefix.mm(torch.gesv(R, S)[0])).transpose(-1, -2), S)[0])
+			+ K_prefix.mm(torch.linalg.solve((K_prefix.mm(torch.linalg.solve(R, S)[0])).transpose(-1, -2), S)[0])
 		return K_prefix, S
 
 	def update_state(self, K_prefix, S, dy):
-		dx = K_prefix.mm(torch.gesv(dy, S)[0]).squeeze(1) # K*dy
+		dx = K_prefix.mm(torch.linalg.solve(dy, S)[0]).squeeze(1) # K*dy
 		self.x[:3] += dx[:3]
 		self.x[3:6] += (SO3.exp(dx[3:6]).dot(SO3.from_rpy(self.x[3:6]))).to_rpy()
 		self.x[6:9] += dx[6:9]

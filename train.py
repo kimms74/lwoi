@@ -1,4 +1,5 @@
 import time
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,7 +7,7 @@ import pyro
 import pyro.contrib.gp as gp
 import pyro.infer as infer
 import pyro.optim as optim
-from pyro.contrib.gp.util import Parameterized
+from pyro.contrib.gp.parameterized import Parameterized
 import numpy as np
 from liegroups.torch import SE3, SO3
 from utils import jacobian
@@ -363,7 +364,7 @@ def train_loop(dataset, gp, svi, epoch):
 			u_i, y_i = dataset.get_train_data(i, gp.name)
 			u = torch.cat((u, u_i), 0)
 			y = torch.cat((y, y_i), 0)
-		u, y = specific_to_kaist_imu(dataset, gp, u, y)
+		# u, y = specific_to_kaist_imu(dataset, gp, u, y)
 		gp.set_data(u, y)
 	loss = svi.step()
 	print('Train Epoch: {:2d} \tLoss: {:.6f}'.format(epoch, loss))
@@ -374,9 +375,14 @@ def specific_to_kaist_imu(dataset, gp, u, y):
 		# remove input for sequence without imu
 		u_true = np.ones(u.shape[0])
 		for i in range(u.shape[0]):
-			if u[i].sum() < 1e-5:
+			if u[i].sum() < 1e-5 :
+			# if u[i].sum() < 1e-5 and u[i].sum() > -1e-5:
 				u_true[i] = 0
+				# u[i] = u[i-1]
+				# y[i] = y[i-1]
+		# # print(u_true)
 		u = u[u_true]
+		# # print(u)
 		y = y[u_true]
 	return u, y
 
@@ -446,8 +452,9 @@ def train_gp(args, dataset, gp_class):
 
 	gp_instante = gp_class(args, gp_model, dataset)
 	args.mate = preprocessing(args, dataset, gp_instante)
-
+	
 	optimizer = optim.ClippedAdam({"lr": args.lr, "lrd": args.lr_decay})
+	# optimizer = optim.Adam({"lr": args.lr})
 	svi = infer.SVI(gp_instante.model, gp_instante.guide, optimizer, infer.Trace_ELBO())
 
 	print("Start of training " + dataset.name + ", " + gp_class.name)

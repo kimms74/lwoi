@@ -4,7 +4,7 @@ from main_kaist import launch
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description='GP nclt')
 	parser.add_argument('--nclt', type=bool, default=True)
-	parser.add_argument('--path_data_base', type=str, default="media/DATA/NCLT/")
+	parser.add_argument('--path_data_base', type=str, default="DATA/NCLT/")
 	parser.add_argument('--path_data_save', type=str, default="data/nclt/")
 	parser.add_argument('--path_results', type=str, default="results/nclt/")
 	parser.add_argument('--path_temp', type=str, default="temp/nclt/")

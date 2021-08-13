@@ -146,10 +146,8 @@ class KAISTDataset(Dataset):
 			u_length += u_odo_fog.shape[0]*u_odo_fog.shape[1]
 			u_odo_fog_std = (u_odo_fog_std/u_length).sqrt()
 			u_imu_std = (u_imu_std/u_length).sqrt()
+		# print(u_odo_fog_loc.shape, " ", u_odo_fog_std.shape, " ",u_imu_loc.shape, " ", u_imu_std.shape)
 
-		# for constant measurements, set standard deviation to 1
-		u_odo_fog_std[u_odo_fog_std == 0] = 1
-		u_imu_std[u_imu_std == 0] = 1
 		self.normalize_factors = {
 							 'u_odo_fog_loc': u_odo_fog_loc,
 							 'u_imu_loc': u_imu_loc,
