@@ -116,9 +116,11 @@ class GpOdoFog(Parameterized):
 	def f_hat(self, u):
 		u_odo = u[..., :2]
 		u_fog = u[..., 2:]
-		delta_t = self.Delta_t / u_odo.shape[1]
+		# print(u_odo.shape, " ", u_fog.shape, u_odo.shape[1])
+		delta_t = self.Delta_t / u_odo.shape[1] # 0.01 = 1/100
 		Rot_prev = torch.eye(3).repeat(u_odo.shape[0], 1, 1)
 		p_prev = torch.zeros(3).repeat(u_odo.shape[0], 1)
+		# print(Rot_prev.shape, " ", p_prev.shape)
 
 		for i in range(u_odo.shape[1]):
 			dRot, dp = self.integrate_odo_fog(u_odo[:, i], u_fog[:, i], delta_t)
@@ -127,6 +129,7 @@ class GpOdoFog(Parameterized):
 			Rot_prev = SO3.from_matrix(Rot, True).as_matrix()
 			p_prev = p
 		chi = torch.eye(4).repeat(u_odo.shape[0], 1, 1)
+		# print( chi.shape)
 		chi[:, :3, :3] = Rot
 		chi[:, :3, 3] = p
 		return chi
@@ -137,9 +140,10 @@ class GpOdoFog(Parameterized):
 		else:
 			v, _ = self.encoder2speed(u_odo, delta_t)
 		xi = u_odo.new_zeros(u_odo.shape[0], 6)
-		xi[:, 0] = v*delta_t
-		xi[:, 5] = u_fog.squeeze()
+		xi[:, 0] = v*delta_t # only forward moving
+		xi[:, 5] = u_fog.squeeze() # only z rotating
 		Rot = SO3.from_rpy(xi[:, 3:]).as_matrix()
+		# print(Rot.shape)
 		p = xi[:, :3]
 		return Rot, p
 
@@ -148,7 +152,7 @@ class GpOdoFog(Parameterized):
 		r_l = self.calibration_parameters["Encoder left wheel diameter"]
 		r_r = self.calibration_parameters["Encoder right wheel diameter"]
 		a = self.calibration_parameters["Encoder wheel base"]
-		d_l = np.pi * r_l * u_odo[:, 0] / res
+		d_l = np.pi * r_l * u_odo[:, 0] / res # num of rotations = u_odo/res
 		d_r = np.pi * r_r * u_odo[:, 1] / res
 		lin_speed = (d_l + d_r) / 2
 		ang_speed = (d_l - d_r) / a
@@ -249,15 +253,14 @@ def preprocessing(args, dataset, gp):
 				u, y = dataset.get_test_data(i, gp.name)
 			u_unnormalize = gp.unnormalize(u)
 			y_hat = gp.f_hat(u_unnormalize)
-			y_diff = gp.box_minus(y, y_hat)
-			return y_diff[(y_diff**2).mean(dim=1).sqrt() < args.y_diff_odo_fog_threshold]
+			y_diff = gp.box_minus(y, y_hat) # (N_max x 6)
+			return y_diff[(y_diff**2).mean(dim=1).sqrt() < args.y_diff_odo_fog_threshold] # if all arguments are true, it is same to y_diff. characteristic of torch
 
 		y_odo_fog_std = torch.zeros(0, y_odo_fog_loc.shape[0])
 		for i in range(len(dataset.datasets_train)):
 			y_diff = get_error(i, 'train')
 			y_odo_fog_std = torch.cat((y_odo_fog_std, (y_diff)**2), 0)
 			num_train += y_diff.shape[0]
-
 		mate_translation = 0
 		mate_rotation = 0
 		for i in range(len(dataset.datasets_validation)):

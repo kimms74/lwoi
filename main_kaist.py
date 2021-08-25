@@ -258,7 +258,7 @@ def read_data_kaist(args):
 			odo = torch.from_numpy(odo[:, 1:])
 			fog = torch.from_numpy(fog_new[:, 1:])
 
-			# take IMR gyro and accelerometer
+			# take IMU gyro and accelerometer
 			imu = imu[:, 7:13]
 
 			# Transform integrated measurement into differential measurement
@@ -316,7 +316,8 @@ def read_data_kaist(args):
 					u_imu[i] = imu[i_odo:i_odo + k]
 					v_i = v_gt[i_odo]
 					v_end = v_gt[i_odo+k]
-
+					# print(SO3.from_matrix(chi_i[:3, :3].t().mm(chi_end[:3, :3])).log().shape)
+					# print(SO3.from_matrix(chi_i[:3, :3].t().mm(chi_end[:3, :3])).log())
 					y_imu[i] =  torch.cat((
 						SO3.from_matrix(chi_i[:3, :3].t().mm(chi_end[:3, :3])).log(),
 						chi_i[:3, :3].t().mv(v_end-v_i- g*args.Delta_t),
@@ -456,8 +457,8 @@ def launch(args):
 	else:
 		args.filter = KAISTFilter
 		args.dataset_name = "Kaist"
-		args.cross_validation_sequences = ['urban14', 'urban17']
-		args.test_sequences = ['urban15', 'urban16']
+		args.cross_validation_sequences = ['urban13', 'urban07']
+		args.test_sequences = ['urban14','urban15', 'urban16', 'urban38']
 
 	### What to do
 	args.read_data = True
@@ -489,7 +490,7 @@ if __name__ == '__main__':
 	parser.add_argument('--nclt', type=bool, default=False)
 
 	# paths
-	parser.add_argument('--path_data_base', type=str, default="DATA/KAIST/")
+	parser.add_argument('--path_data_base', type=str, default="../DATA/KAIST/")
 	parser.add_argument('--path_data_save', type=str, default="data/kaist/")
 	parser.add_argument('--path_results', type=str, default="results/kaist/")
 	parser.add_argument('--path_temp', type=str, default="temp/kaist/")
